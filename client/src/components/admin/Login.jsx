@@ -33,6 +33,7 @@ const Login = () => {
             </h1>
             <p className="font-light">
               Enter your credentials to access the admin page
+              <br /> Use this- <span className="font-bold">"admin@example.com"</span> <span className="font-bold">"greatstack"</span>
             </p>
           </div>
           <form
