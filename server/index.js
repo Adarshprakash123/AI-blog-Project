@@ -4,7 +4,6 @@ import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import connectDB from './configs/db.js'
-import { connectRedis, isRedisReady } from './configs/redis.js'
 import adminRouter from './routes/adminRoutes.js'
 import blogRouter from './routes/blogRoutes.js'
 import { apiLimiter } from './middleware/security.js'
@@ -13,7 +12,6 @@ const app=express()
 app.set('trust proxy', 1)
 
 await connectDB()
-await connectRedis()
 
 app.disable('x-powered-by')
 app.use(helmet())
@@ -40,8 +38,7 @@ app.get("/",(req,res)=>{
         success:true,
         message:"API is working",
         services:{
-            postgres:"connected",
-            redis:isRedisReady() ? "connected" : "disabled"
+            postgres:"connected"
         }
     })
 })

@@ -6,7 +6,6 @@ import fs from 'fs';
 import imagekit from '../configs/imagekit.js';
 import { prisma } from '../configs/db.js';
 import { generateBlogContent } from '../configs/openai.js';
-import { cacheKeys, deleteCacheKeys, getCachedJson, setCachedJson } from '../utils/cache.js';
 import { serializeBlog, serializeComment } from '../utils/serializers.js';
 
 export const addBlog = async (req, res) => {
@@ -52,13 +51,6 @@ export const addBlog = async (req, res) => {
       }
     });
 
-    await deleteCacheKeys([
-      cacheKeys.blogs,
-      cacheKeys.adminBlogs,
-      cacheKeys.dashboard,
-      cacheKeys.blogById(createdBlog.id),
-    ]);
-
     res.json({ success: true, message: "Blog added successfully" });
   } catch (error) {
     console.error(error);
@@ -75,18 +67,11 @@ export const addBlog = async (req, res) => {
 
 export const getAllBlogs=async(req,res)=>{
     try{
-        const cachedBlogs = await getCachedJson(cacheKeys.blogs);
-
-        if (cachedBlogs) {
-            return res.json({success:true, blogs: cachedBlogs, cached: true})
-        }
-
         const blogs = await prisma.blog.findMany({
             where: { isPublished: true },
             orderBy: { createdAt: 'desc' }
         })
         const serializedBlogs = blogs.map(serializeBlog)
-        await setCachedJson(cacheKeys.blogs, serializedBlogs, 300)
         res.json({success:true, blogs: serializedBlogs})
     }catch(error){
         res.json({success:false,message:error.message})
@@ -96,16 +81,11 @@ export const getAllBlogs=async(req,res)=>{
 export const getBlogById=async(req,res)=>{
     try{
         const{blogId}=req.params
-        const cachedBlog = await getCachedJson(cacheKeys.blogById(blogId));
-        if (cachedBlog) {
-            return res.json({success:true,blog: cachedBlog, cached: true})
-        }
         const blog=await prisma.blog.findUnique({ where: { id: blogId } })
         if(!blog){
             return res.json({success:false,message:"blog not found"})
         }
         const serializedBlog = serializeBlog(blog)
-        await setCachedJson(cacheKeys.blogById(blogId), serializedBlog, 300)
         res.json({success:true,blog: serializedBlog})
     }catch(error){
         res.json({success:false,message:error.message})
@@ -116,14 +96,6 @@ export const deleteBlogById=async(req,res)=>{
     try{
         const{id}=req.body
          await prisma.blog.delete({ where: { id } })
-         await deleteCacheKeys([
-            cacheKeys.blogs,
-            cacheKeys.adminBlogs,
-            cacheKeys.adminComments,
-            cacheKeys.dashboard,
-            cacheKeys.blogById(id),
-            cacheKeys.comments(id),
-         ])
         res.json({success:true,message:"Blog deleted Successfully"})
     }catch(error){
         res.json({success:false,message:error.message})
@@ -141,12 +113,6 @@ export const togglePublish=async(req,res)=>{
             where: { id },
             data: { isPublished: !blog.isPublished }
         })
-        await deleteCacheKeys([
-            cacheKeys.blogs,
-            cacheKeys.adminBlogs,
-            cacheKeys.dashboard,
-            cacheKeys.blogById(id),
-        ])
         res.json({
           success:true,
           message:"Blog status updated successfully",
@@ -167,11 +133,6 @@ export const addComment=async(req,res)=>{
                 content
             }
         })
-        await deleteCacheKeys([
-            cacheKeys.adminComments,
-            cacheKeys.dashboard,
-            cacheKeys.comments(blog),
-        ])
         res.json({success:true,message:"successfully"})
     }catch(error){
         res.json({success:false,message:error.message})
@@ -181,18 +142,11 @@ export const addComment=async(req,res)=>{
 export const getBlogComments=async(req,res)=>{
     try{
         const {blogId}=req.body;
-        const cachedComments = await getCachedJson(cacheKeys.comments(blogId));
-
-        if (cachedComments) {
-            return res.json({success:true,comments: cachedComments, cached: true})
-        }
-
         const comments = await prisma.comment.findMany({
             where: { blogId, isApproved: true },
             orderBy: { createdAt: 'desc' }
         })
         const serializedComments = comments.map(serializeComment)
-        await setCachedJson(cacheKeys.comments(blogId), serializedComments, 300)
         res.json({success:true,comments: serializedComments})
     }catch(error){
         res.json({success:false,message:error.message})

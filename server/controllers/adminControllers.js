@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../configs/db.js';
-import { cacheKeys, deleteCacheKeys, getCachedJson, setCachedJson } from '../utils/cache.js';
 import { serializeBlog, serializeComment } from '../utils/serializers.js';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -141,17 +140,10 @@ export const adminLogout = async (req, res) => {
 
 export const getAllBlogsAdmin=async(req,res)=>{
     try{
-        const cachedBlogs = await getCachedJson(cacheKeys.adminBlogs);
-
-        if (cachedBlogs) {
-            return res.json({success:true,blogs: cachedBlogs, cached: true})
-        }
-
         const blogs = await prisma.blog.findMany({
             orderBy: { createdAt: 'desc' }
         })
         const serializedBlogs = blogs.map(serializeBlog)
-        await setCachedJson(cacheKeys.adminBlogs, serializedBlogs, 180)
         res.json({success:true,blogs: serializedBlogs})
     }catch(error){
         res.json({success:false,message:error.message})
@@ -160,18 +152,11 @@ export const getAllBlogsAdmin=async(req,res)=>{
 
 export const getAllComments=async(req,res)=>{
     try{
-        const cachedComments = await getCachedJson(cacheKeys.adminComments);
-
-        if (cachedComments) {
-            return res.json({success:true,comments: cachedComments, cached: true})
-        }
-
         const comments = await prisma.comment.findMany({
             include: { blog: true },
             orderBy: { createdAt: 'desc' }
         })
         const serializedComments = comments.map(serializeComment)
-        await setCachedJson(cacheKeys.adminComments, serializedComments, 180)
         res.json({success:true,comments: serializedComments})
     }catch(error){
         res.json({success:false,message:error.message})
@@ -180,12 +165,6 @@ export const getAllComments=async(req,res)=>{
 
 export const getDashboard=async(req,res)=>{
     try{
-      const cachedDashboard = await getCachedJson(cacheKeys.dashboard);
-
-      if (cachedDashboard) {
-        return res.json({success:true,dashboardData: cachedDashboard, cached: true})
-      }
-
       const recentBlogs = await prisma.blog.findMany({
         orderBy: { createdAt: 'desc' },
         take: 5
@@ -196,7 +175,6 @@ export const getDashboard=async(req,res)=>{
       const dashboardData={
         blogs,comments,drafts,recentBlogs: recentBlogs.map(serializeBlog)
       }
-      await setCachedJson(cacheKeys.dashboard, dashboardData, 180)
       res.json({success:true,dashboardData})
     }catch(error){
         res.json({success:false,message:error.message})
@@ -206,14 +184,9 @@ export const getDashboard=async(req,res)=>{
 export const deleteCommentById=async(req,res)=>{
     try{
         const {id}=req.body;
-        const deletedComment = await prisma.comment.delete({
+        await prisma.comment.delete({
             where: { id }
         });
-        await deleteCacheKeys([
-            cacheKeys.adminComments,
-            cacheKeys.dashboard,
-            ...(deletedComment?.blogId ? [cacheKeys.comments(deletedComment.blogId)] : []),
-        ])
         res.json({success:true,message:"Deleted successfully"})
     }catch(error){
         res.json({success:false,message:error.message})
@@ -223,15 +196,10 @@ export const deleteCommentById=async(req,res)=>{
 export const approveCommentById=async(req,res)=>{
     try{
         const {id}=req.body;
-        const updatedComment = await prisma.comment.update({
+        await prisma.comment.update({
             where: { id },
             data: { isApproved: true }
         });
-        await deleteCacheKeys([
-            cacheKeys.adminComments,
-            cacheKeys.dashboard,
-            ...(updatedComment?.blogId ? [cacheKeys.comments(updatedComment.blogId)] : []),
-        ])
         res.json({success:true,message:"Comment approved successfully"})
     }catch(error){
         res.json({success:false,message:error.message})
