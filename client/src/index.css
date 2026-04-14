@@ -37,3 +37,19 @@
 .rich-text li { margin-bottom: 8px; }
 
 .rich-text a { color: #007AFF }
+.rich-text * { background: transparent !important; }
+
+/* Keep editor in readable light mode regardless of inherited theme styles */
+.ql-toolbar.ql-snow,
+.ql-container.ql-snow,
+.ql-editor {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+.ql-editor pre.ql-syntax,
+.rich-text pre,
+.rich-text code {
+  background-color: #f8fafc !important;
+  color: #111827 !important;
+}

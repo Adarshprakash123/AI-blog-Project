@@ -4,14 +4,17 @@
 
 import fs from 'fs';
 import imagekit from '../configs/imagekit.js';
-import Blog from '../models/blog.js';
-import Comment from '../models/comments.js';
-import main from '../configs/gemini.js';
+import { prisma } from '../configs/db.js';
+import { generateBlogContent } from '../configs/openai.js';
+import { cacheKeys, deleteCacheKeys, getCachedJson, setCachedJson } from '../utils/cache.js';
+import { serializeBlog, serializeComment } from '../utils/serializers.js';
 
 export const addBlog = async (req, res) => {
+  let imageFile;
+
   try {
     const { title, subTitle, description, category, isPublished } = JSON.parse(req.body.blog);
-    const imageFile = req.file;
+    imageFile = req.file;
 
     if (!title || !subTitle || !description || !category) {
       return res.json({ success: false, message: "Invalid blog data" });
@@ -38,95 +41,172 @@ export const addBlog = async (req, res) => {
       ]
     });
 
-    await Blog.create({
-      title,
-      subTitle,
-      description,
-      category,
-      image: optimizedImageUrl,
-      isPublished
+    const createdBlog = await prisma.blog.create({
+      data: {
+        title,
+        subTitle,
+        description,
+        category,
+        image: optimizedImageUrl,
+        isPublished: Boolean(isPublished)
+      }
     });
+
+    await deleteCacheKeys([
+      cacheKeys.blogs,
+      cacheKeys.adminBlogs,
+      cacheKeys.dashboard,
+      cacheKeys.blogById(createdBlog.id),
+    ]);
 
     res.json({ success: true, message: "Blog added successfully" });
   } catch (error) {
     console.error(error);
-    res.json({ success: false, message: "Server error" });
+    const message = error?.message?.includes("cannot be authenticated")
+      ? "Image upload auth failed. Set valid IMAGEKIT keys in server/.env and restart server."
+      : (error.message || "Server error");
+    res.json({ success: false, message });
+  } finally {
+    if (imageFile?.path && fs.existsSync(imageFile.path)) {
+      fs.unlinkSync(imageFile.path);
+    }
   }
 };
 
 export const getAllBlogs=async(req,res)=>{
     try{
-        const blogs=await Blog.find({isPublished:true})
-        res.json({success:true, blogs})
+        const cachedBlogs = await getCachedJson(cacheKeys.blogs);
+
+        if (cachedBlogs) {
+            return res.json({success:true, blogs: cachedBlogs, cached: true})
+        }
+
+        const blogs = await prisma.blog.findMany({
+            where: { isPublished: true },
+            orderBy: { createdAt: 'desc' }
+        })
+        const serializedBlogs = blogs.map(serializeBlog)
+        await setCachedJson(cacheKeys.blogs, serializedBlogs, 300)
+        res.json({success:true, blogs: serializedBlogs})
     }catch(error){
-        res.json({sucess:false,message:error.message})
+        res.json({success:false,message:error.message})
     }
 }
 
 export const getBlogById=async(req,res)=>{
     try{
         const{blogId}=req.params
-        const blog=await Blog.findById(blogId)
+        const cachedBlog = await getCachedJson(cacheKeys.blogById(blogId));
+        if (cachedBlog) {
+            return res.json({success:true,blog: cachedBlog, cached: true})
+        }
+        const blog=await prisma.blog.findUnique({ where: { id: blogId } })
         if(!blog){
             return res.json({success:false,message:"blog not found"})
         }
-        res.json({success:true,blog})
+        const serializedBlog = serializeBlog(blog)
+        await setCachedJson(cacheKeys.blogById(blogId), serializedBlog, 300)
+        res.json({success:true,blog: serializedBlog})
     }catch(error){
-        res.json({success:false,message:"invalid bhai"})
+        res.json({success:false,message:error.message})
     }
 }
 
 export const deleteBlogById=async(req,res)=>{
     try{
         const{id}=req.body
-         await Blog.findByIdAndDelete(id)
-         // Delete all Comments assosciated with the blog
-         await Comment.deleteMany({blog:id})
+         await prisma.blog.delete({ where: { id } })
+         await deleteCacheKeys([
+            cacheKeys.blogs,
+            cacheKeys.adminBlogs,
+            cacheKeys.adminComments,
+            cacheKeys.dashboard,
+            cacheKeys.blogById(id),
+            cacheKeys.comments(id),
+         ])
         res.json({success:true,message:"Blog deleted Successfully"})
     }catch(error){
-        res.json({success:false,message:"invalid bhai"})
+        res.json({success:false,message:error.message})
     }
 }
 
 export const togglePublish=async(req,res)=>{
     try{
         const {id}=req.body;
-        const blog=await Blog.findById(id);
+        const blog=await prisma.blog.findUnique({ where: { id } });
         if(!blog){
-            return res.json({message:"blog not found"})
+            return res.json({success:false,message:"Blog not found"})
         }
-        blog.isPublished=!blog.isPublished
-        await blog.save()
-        res.json({success:true,message:"blog status updated Successfully"})
+        const updatedBlog = await prisma.blog.update({
+            where: { id },
+            data: { isPublished: !blog.isPublished }
+        })
+        await deleteCacheKeys([
+            cacheKeys.blogs,
+            cacheKeys.adminBlogs,
+            cacheKeys.dashboard,
+            cacheKeys.blogById(id),
+        ])
+        res.json({
+          success:true,
+          message:"Blog status updated successfully",
+          blog: serializeBlog(updatedBlog)
+        })
     }catch(error){
-        res.json({success:false,message:"invalid bhai toggle"})
+        res.json({success:false,message:error.message})
     }
 }
 
 export const addComment=async(req,res)=>{
     try{
         const {blog,name,content}=req.body
-        await Comment.create({blog,name,content})
+        await prisma.comment.create({
+            data: {
+                blogId: blog,
+                name,
+                content
+            }
+        })
+        await deleteCacheKeys([
+            cacheKeys.adminComments,
+            cacheKeys.dashboard,
+            cacheKeys.comments(blog),
+        ])
         res.json({success:true,message:"successfully"})
     }catch(error){
-        res.json({success:false,message:"invalid bhai toggle"})
+        res.json({success:false,message:error.message})
     }
 }
 
 export const getBlogComments=async(req,res)=>{
     try{
         const {blogId}=req.body;
-        const comments=await Comment.find({blog:blogId,isApproved:true}).sort({createdAt:-1})
-        res.json({success:true,comments})
+        const cachedComments = await getCachedJson(cacheKeys.comments(blogId));
+
+        if (cachedComments) {
+            return res.json({success:true,comments: cachedComments, cached: true})
+        }
+
+        const comments = await prisma.comment.findMany({
+            where: { blogId, isApproved: true },
+            orderBy: { createdAt: 'desc' }
+        })
+        const serializedComments = comments.map(serializeComment)
+        await setCachedJson(cacheKeys.comments(blogId), serializedComments, 300)
+        res.json({success:true,comments: serializedComments})
     }catch(error){
-        res.json({success:false,message:"invalid bhai toggle"})
+        res.json({success:false,message:error.message})
     }
 }
 
 export const generateContent=async(req,res)=>{
     try{
         const {prompt}=req.body;
-        const content=await main(prompt+' Generate a blog content for this topic in simple text format')
+        if(!prompt?.trim()){
+            return res.json({success:false,message:"Prompt is required"})
+        }
+
+        const content=await generateBlogContent(prompt.trim())
         res.json({success:true,content})
     }catch(error){
        res.json({success:false,message:error.message})

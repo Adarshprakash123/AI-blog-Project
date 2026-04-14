@@ -10,7 +10,7 @@ const ListBlog = () => {
 
   const fetchBlogs=async()=>{
     try{
-      const {data}=await axios.get('/api/admin/blogs')
+      const {data}=await axios.get('/api/admin/blogs', { params: { t: Date.now() } })
       if(data.success){
         setBlogs(data.blogs)
       }else{
@@ -23,6 +23,14 @@ const ListBlog = () => {
   useEffect(()=>{
     fetchBlogs()
   },[])
+
+  const handleToggleSuccess = (updatedBlog) => {
+    setBlogs((prevBlogs) =>
+      prevBlogs.map((item) =>
+        item._id === updatedBlog._id ? { ...item, ...updatedBlog } : item
+      )
+    );
+  };
   return (
     <div className='flex-1 h-4/5 pt-5 px-5 sm:pt-12 sm:pl-16 bg-blue-50/50'>
       <h1>All blogs</h1>
@@ -49,7 +57,7 @@ const ListBlog = () => {
             </thead>
             <tbody>
               {blogs.map((blog,index)=>{
-                return <BlogTableItem  key={blog._id} blog={blog} fetchBlogs={fetchBlogs} index={index+1}/>
+                return <BlogTableItem  key={blog._id} blog={blog} fetchBlogs={fetchBlogs} index={index+1} onToggleSuccess={handleToggleSuccess}/>
               })}
             </tbody>
           </table>

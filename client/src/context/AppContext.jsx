@@ -7,12 +7,21 @@ import toast from "react-hot-toast";
 import { useEffect } from "react";
 
 axios.defaults.baseURL=import.meta.env.VITE_BASE_URL
+axios.defaults.withCredentials = true
+
+const setAuthHeader = (token) => {
+    if (token) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    } else {
+        delete axios.defaults.headers.common['Authorization']
+    }
+}
 
 const AppContext=createContext()
 
 export const AppProvider=({children})=>{
     const navigate=useNavigate()
-    const [token,setToken]=useState(null)
+    const [token,setToken]=useState(false)
     const [blogs,setBlogs]=useState([])
     const [input,setInput]=useState("")
 
@@ -26,14 +35,18 @@ export const AppProvider=({children})=>{
     }
     useEffect(()=>{
         fetchBlogs()
-        const token=localStorage.getItem('token')
-        if(token){
-            setToken(token)
-            axios.defaults.headers.common['Authorization']=`${token}`
+        const restoreSession = async () => {
+            try {
+                const { data } = await axios.get('/api/admin/me')
+                setToken(Boolean(data?.success))
+            } catch {
+                setToken(false)
+            }
         }
+        restoreSession()
     },[])
     const value={
-        axios,navigate,token,setToken,blogs,setBlogs,input,setInput
+        axios,navigate,token,setToken,blogs,setBlogs,input,setInput,setAuthHeader
     }
     return(
         <AppContext.Provider value={value}>

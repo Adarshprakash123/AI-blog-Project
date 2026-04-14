@@ -18,15 +18,26 @@ const AddBlog = () => {
   const [subTitle, setSubTitle] = useState("");
   const [category, setCategory] = useState(false);
   const [isPublished, setIsPublished] = useState(false);
+  const hasHtmlTag = (text = "") => /<[^>]+>/.test(text);
+  const sanitizeContentHtml = (html = "") => html.replace(/\sstyle="[^"]*"/gi, "");
+  const stripMarkdownCodeFence = (text = "") =>
+    text.replace(/^```(?:markdown|md|html)?\s*/i, "").replace(/\s*```$/i, "").trim();
 
   const generatecontent=async()=>{
     if(!title) return toast.error('Please enter a title')
+    if(!quillref.current) return toast.error('Editor is not ready yet')
   
       try{
         setLoading(true)
         const {data}=await axios.post('/api/blog/generate',{prompt:title})
         if(data.success){
-          quillref.current.root.innerHTML=parse(data.content)
+          const generatedContent = stripMarkdownCodeFence(data.content || '')
+          const htmlContent = hasHtmlTag(generatedContent)
+            ? generatedContent
+            : await parse(generatedContent)
+          const sanitizedHtml = sanitizeContentHtml(htmlContent)
+          quillref.current.setContents([])
+          quillref.current.clipboard.dangerouslyPasteHTML(0, sanitizedHtml, 'api')
         }else{
           toast.error(data.message)
         }

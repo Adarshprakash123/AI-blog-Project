@@ -3,14 +3,19 @@ import {Outlet} from 'react-router-dom'
 import {assets} from '../../assets/assets'
 import Sidebar from './Sidebar'
 import { useAppContext } from '../../context/AppContext'
+import toast from 'react-hot-toast'
 const Layout = () => {
  
-  const {axios,setToken,navigate}=useAppContext()
-  const logout=()=>{
-    localStorage.removeItem('token')
-    axios.defaults.headers.common['Authorization']=null
-    setToken(null)
-    navigate('/')
+  const {axios,setToken,navigate,setAuthHeader}=useAppContext()
+  const logout=async()=>{
+    try {
+      await axios.post('/api/admin/logout')
+      setAuthHeader(null)
+      setToken(false)
+      navigate('/')
+    } catch (error) {
+      toast.error(error.message)
+    }
   }
   return (
     <>

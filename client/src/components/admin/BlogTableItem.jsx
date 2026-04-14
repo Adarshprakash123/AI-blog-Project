@@ -3,7 +3,7 @@ import { assets } from "../../assets/assets";
 import { useAppContext } from "../../context/AppContext";
 import toast from "react-hot-toast";
 
-const BlogTableItem = ({ blog, fetchBlogs, index }) => {
+const BlogTableItem = ({ blog, fetchBlogs, index, onToggleSuccess }) => {
   const { title, createdAt } = blog;
   const BlogDate = new Date(createdAt);
   const { axios } = useAppContext();
@@ -32,7 +32,11 @@ const BlogTableItem = ({ blog, fetchBlogs, index }) => {
     });
     if (data.success) {
       toast.success(data.message);
-      await fetchBlogs();
+      if (data.blog && onToggleSuccess) {
+        onToggleSuccess(data.blog);
+      } else {
+        await fetchBlogs();
+      }
     } else {
       toast.error(data.message);
     }
